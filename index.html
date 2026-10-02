@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PayGuard Agent – safe AI purchases with PayPal</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#EAF0F2;--card:#fff;--ink:#0F2A36;--mute:#5B7280;--line:#D3DEE3;--teal:#0B7A75;--warn:#C2410C;--bad:#B42318}
+@media (prefers-color-scheme:dark){:root{--bg:#0C171C;--card:#14252D;--ink:#E6EEF1;--mute:#93A9B3;--line:#27404B;--teal:#3CC4BC;--warn:#F59E5B;--bad:#FF7A6B}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Sora,system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5}
+main{max-width:980px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}
+h2{font-size:16px;margin:0 0 12px}
+.lead{margin:0 0 18px;color:var(--mute);max-width:62ch}
+.badge{display:inline-block;border:1px solid var(--teal);color:var(--teal);border-radius:99px;padding:2px 12px;font-size:13px;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.task{display:block;width:100%;text-align:left;font:inherit;font-size:14px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
+.task:hover,.task.on{border-color:var(--teal)}
+.task small{display:block;color:var(--mute)}
+button:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.meter{height:14px;border-radius:7px;background:var(--line);overflow:hidden;margin:6px 0 10px}
+.meter i{display:block;height:100%;width:0;background:var(--teal);transition:width .25s,background .25s}
+.verdict{font-size:20px;font-weight:700;margin:0 0 4px}
+.small{font-size:13px;color:var(--mute);margin:0 0 10px}
+.go{font:inherit;font-size:14px;border:0;border-radius:8px;background:var(--teal);color:#fff;padding:10px 14px;cursor:pointer;margin-bottom:10px}
+#pp{min-height:60px}
+#log{font-size:13px;color:var(--mute);margin:10px 0 0;padding-left:18px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+<span class="badge">Test money only (PayPal sandbox)</span>
+<h1>PayGuard Agent</h1>
+<p class="lead">An AI shopping agent wants to buy something for you. PayGuard checks the purchase on your own device first. Only safe purchases reach PayPal. The shopping agent in this demo is simulated.</p>
+<div class="grid">
+<section class="card" aria-label="Agent tasks">
+<h2>1. Pick what the agent wants to buy</h2>
+<button class="task" data-i="0" type="button">Weekly groceries, $42<small>Usual shop, usual time, known device</small></button>
+<button class="task" data-i="1" type="button">Noise-cancelling headphones, $160<small>Bigger than usual, from a new device</small></button>
+<button class="task" data-i="2" type="button">Gift cards, $1,400<small>Huge amount at 3am, card pasted, many retries</small></button>
+</section>
+<section class="card" aria-live="polite">
+<h2>2. PayGuard decides on this device</h2>
+<div class="meter" aria-hidden="true"><i id="bar"></i></div>
+<p class="verdict" id="verdict">Pick a purchase to start.</p>
+<p class="small" id="meta"></p>
+<button class="go hide" id="confirm" type="button">Yes, it is me. Continue</button>
+<div id="pp" class="hide"></div>
+<ol id="log"></ol>
+</section>
+</div>
+</main>
+<script>
+(function(){
+var CLIENT_ID="Ad0WIpq3dAZHpmEmoM0V2ZKSEDpUNO0h9RRi3L0MEzJv0h7RpBwE52WP9GtJpRdvL9YS3rL_DHSf8VcH";
+var $=function(i){return document.getElementById(i)};
+var tasks=[
+ {name:"Weekly groceries",amount:42,typing:180,hour:14,retries:0,paste:false,newdev:false},
+ {name:"Noise-cancelling headphones",amount:160,typing:120,hour:23,retries:0,paste:false,newdev:true},
+ {name:"Gift cards",amount:1400,typing:15,hour:3,retries:6,paste:true,newdev:true}
+];
+var W=[.20,.15,.25,.20,.10,.10];
+function dev(s){
+ return [Math.min(1,Math.abs(s.typing-180)/180),s.paste?1:0,s.newdev?1:0,
+  s.amount>40?Math.min(1,Math.log2(s.amount/40)/4):0,(s.hour<6)?.8:0,Math.min(1,s.retries/4)];
+}
+function score(d){var r=0,hi=0;d.forEach(function(x,i){r+=W[i]*x;if(x>=.6)hi++});
+ return Math.min(100,Math.round(r*100+(hi>=3?15:0)));}
+var btn=null,sdk=null;
+function log(t){var li=document.createElement("li");li.textContent=t;$("log").appendChild(li)}
+function loadSdk(cb){
+ if(window.paypal)return cb();
+ if(sdk){sdk.addEventListener("load",cb);return}
+ sdk=document.createElement("script");
+ sdk.src="https://www.paypal.com/sdk/js?client-id="+CLIENT_ID+"&currency=USD&intent=capture";
+ sdk.onload=cb;
+ sdk.onerror=function(){log("Could not load PayPal. Check your internet and reload.")};
+ document.head.appendChild(sdk);
+}
+function showPay(t){
+ $("pp").classList.remove("hide");
+ loadSdk(function(){
+  if(btn){try{btn.close()}catch(e){}}
+  $("pp").innerHTML="";
+  btn=paypal.Buttons({
+   createOrder:function(d,a){return a.order.create({purchase_units:[{description:"PayGuard Agent: "+t.name,amount:{value:t.amount.toFixed(2)}}]})},
+   onApprove:function(d,a){return a.order.capture().then(function(o){
+    log("PayPal sandbox payment "+o.status.toLowerCase()+". Order ID: "+o.id)})},
+   onCancel:function(){log("Payment cancelled.")},
+   onError:function(){log("PayPal reported an error. Try again.")}
+  });
+  btn.render("#pp");
+ });
+}
+function run(i){
+ var t=tasks[i];
+ document.querySelectorAll(".task").forEach(function(b,j){b.classList.toggle("on",j===i)});
+ $("log").innerHTML="";$("pp").classList.add("hide");$("confirm").classList.add("hide");
+ if(btn){try{btn.close()}catch(e){}btn=null}
+ var t0=performance.now(),r=score(dev(t)),ms=(performance.now()-t0).toFixed(2);
+ var v=r<30?["Approved","var(--teal)"]:r<60?["Needs your confirmation","var(--warn)"]:["Blocked","var(--bad)"];
+ $("verdict").textContent=v[0]+" (risk "+r+"/100)";$("verdict").style.color=v[1];
+ $("bar").style.width=r+"%";$("bar").style.background=v[1];
+ $("meta").textContent="Checked in "+ms+" ms on this device. No server was used for the check.";
+ log("Agent wants to buy: "+t.name+" for $"+t.amount);
+ if(r<30){log("PayGuard approved. Pay with PayPal below.");showPay(t)}
+ else if(r<60){log("PayGuard paused the purchase and asks you to confirm.");
+  $("confirm").classList.remove("hide");
+  $("confirm").onclick=function(){$("confirm").classList.add("hide");log("You confirmed.");showPay(t)}}
+ else{log("PayGuard blocked it. PayPal was never called.")}
+}
+document.querySelectorAll(".task").forEach(function(b){
+ b.addEventListener("click",function(){run(+b.getAttribute("data-i"))});
+});
+})();
+</script>
+</body>
+</html>
